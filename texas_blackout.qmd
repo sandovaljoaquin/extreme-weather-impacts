@@ -1,7 +1,393 @@
 ---
 title: "Identifying the impacts of extreme weather"
-format: pdf
+format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
-## 
+Import necessary packages
+
+```{r, message = FALSE}
+library(tidyverse)
+library(dplyr)
+library(sf)
+library(terra)
+library(stars)
+library(tmap)
+library(kableExtra)
+library(patchwork)
+```
+
+## Data Import
+
+```{r, message = FALSE, output = FALSE}
+# Import h08v05 tile February 7, 2021 
+h08v05_2021_02_07 <- rast(here::here("data", "VNP46A1", "VNP46A1.A2021038.h08v05.001.2021039064328.tif"))
+
+# Import h08v05 tile February 7, 2021 STARS 
+h08v05_2021_02_07_stars <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021038.h08v05.001.2021039064328.tif"))
+
+# Import h08v06 tile February 7, 2021
+h08v06_2021_02_07 <- rast(here::here("data", "VNP46A1",
+"VNP46A1.A2021038.h08v06.001.2021039064329.tif"))
+
+# Import h08v06 tile February 7, 2021 STARS 
+h08v06_2021_02_07_stars <- read_stars(here::here("data", "VNP46A1",
+"VNP46A1.A2021038.h08v06.001.2021039064329.tif"))
+
+# Import h08v05 tile February 16, 2021
+h08v05_2021_02_16 <- rast(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v05.001.2021048091106.tif"))
+
+# Import h08v05 tile February 16, 2021 STARS 
+h08v05_2021_02_16_stars <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v05.001.2021048091106.tif"))
+
+# Import h08v06 tile February 16, 2021
+h08v06_2021_02_16 <- rast(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v06.001.2021048091105.tif"))
+
+# Import h08v06 tile February 16, 2021 STARS 
+h08v06_2021_02_16_stars <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v06.001.2021048091105.tif"))
+
+# Import Houston road data
+roads <- st_read(here::here("data", "gis_osm_roads_free_1.gpkg"), 
+                 query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'")
+
+# Import Houston houses data 
+houses <- st_read(here::here("data", "gis_osm_buildings_a_free_1.gpkg"), 
+                  query = "SELECT *
+FROM gis_osm_buildings_a_free_1
+WHERE (type IS NULL AND name IS NULL)")
+
+# Import data from from the U.S. Census Bureau’s American Community Survey for census tracts in 2019
+
+acs_geom <- st_read(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+
+acs_income <- st_read(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "X19_INCOME")
+
+houston_lines <- st_read(here::here("data", "COH_City_Limit_view_1951759729060774326", "Houston_City_Limit.shp"))
+
+```
+
+## Create blackout mask
+
+Identify areas that experienced a blackout
+
+```{r}
+# Creating raster object of each day 
+
+# Merging h08v05 and h08v06 tiles for February 7, 2021
+
+houston_feb7 <- merge(h08v05_2021_02_07, h08v06_2021_02_07)
+
+# Merging h08v05 and h08v06 tiles for February 16, 2021
+houston_feb16 <- merge(h08v05_2021_02_16, h08v06_2021_02_16)
+
+# Creating a difference raster; finding the change in night light intensity
+
+difference_raster = houston_feb7 - houston_feb16 
+```
+
+Reclassify the difference raster. Any location that experienced a drop of more than 200 nW cm-2sr-1 experienced a blackout.
+
+```{r}
+# Creating a reclassification matrix 
+
+# Assigning NA to locations experiencing < 200 nW cm-2sr-1 change
+# Assigning value of 1 to locations experiencing >= 200 nW cm-2sr-1 change
+
+rcl <- matrix(c(-Inf, 200, NA, 
+                200, Inf, 1),
+              ncol = 3, byrow = TRUE)
+
+# Apply matrix to raster to reclassify: all cells are NA or 1 now
+
+reclassified <- classify(difference_raster, rcl = rcl)
+
+# Change reclassified values into factors 
+
+values(reclassified) <- as.factor(values(reclassified))
+
+```
+
+Crop (spatially subset) the blackout mask to the Houston area as defined by the following coordinates: (-96.5, 29), (-96.5, 30.5), (-94.5, 30.5), (-94.5, 29)
+
+```{r}
+# Creating an extent for the Houston area with the above coordinates
+
+extent2 <- rast(xmin = -96.5, # xmin 
+              xmax = -94.5, # xmax
+              ymin = 29,    # ymin 
+              ymax = 30.5) # ymax
+
+
+# Applying the above defined extent to the reclassified raster 
+
+cropped <- crop(reclassified, extent2)
+
+# Very 'cropped' has fewer values 
+
+if(ncell(reclassified) == nrow(cropped)) {
+  warning("clipping did not remove cells")
+} else {
+  print("clipping removed cells")
+}
+
+```
+
+Re-project the cropped blackout dataset to EPSG:3083 (NAD83 / Texas Centric Albers Equal Area)
+
+```{r}
+# Reproject to EPSG 3083
+
+reprojected_houston <- project(cropped,"EPSG:3083")
+
+# Check if crs was updated 
+
+if(st_crs(reprojected_houston)$epsg == 3083) {
+  print("CRS was updated")
+} else {
+  print("CRS was not updated")
+}
+
+```
+
+Vectorize raster
+
+```{r}
+# Convert raster data to polygon vector data 
+
+cropped_blackout <- as.polygons(reprojected_houston) |> 
+  st_as_sf()
+
+# Confirm `cropped_blackout` is valid sf object 
+
+st_is_valid(cropped_blackout)
+
+```
+
+## Exclude highways from the cropped blackout mask
+
+```{r}
+# Transform CRS of roads to match blackout map with updated CRS 
+
+highway_transform <- st_transform(roads, crs = st_crs(cropped_blackout))
+# Using if-else statements to verify match
+if(st_crs(highway_transform) == st_crs(cropped_blackout)){
+print("Match")
+} else {
+print("Not a match")
+}
+
+```
+
+```{r}
+# Checking that units are the same 
+
+if (st_crs(cropped_blackout, parameters = TRUE)$units == st_crs(highway_transform, parameters = TRUE)$units) {
+  print("Units match") 
+} else {
+  print("Units do not match")
+}
+
+```
+
+Exlude areas within 200m of highways.
+
+```{r}
+# Creating a 200m buffer from highways 
+
+highway_200m_buffer <- st_buffer(highway_transform, dist = 200) |>
+  st_union()
+```
+
+```{r, warning=FALSE}
+# Finding the difference between the blackout map and the highway buffer 
+# Returns cropped_black out that does not overlay with the buffer 
+
+difference <- st_difference(cropped_blackout, highway_200m_buffer)
+
+```
+
+```{r}
+
+tm_shape(difference) + 
+  tm_polygons(fill = "black") + 
+  tm_title("Houston Areas Affected by Blackout", 
+          fontface = "bold") + 
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_compass(position = c("left", "bottom")) + 
+  tm_basemap("OpenStreetMap")
+
+```
+
+## Set of maps comparing night light intensities before and after the first two storms
+
+```{r}
+# Creating stars raster object of each day 
+
+# Merge tils for February 7  
+houston_feb7_stars <- st_mosaic(h08v05_2021_02_07_stars, h08v06_2021_02_07_stars )
+
+# Merge tiles for February 16 
+houston_feb16_stars <- st_mosaic(h08v05_2021_02_16_stars, h08v06_2021_02_16_stars)
+# Define the new extent
+
+extent <- st_bbox(c(xmin = -96.5, # xmin
+                  ymin = 29, # ymin 
+                  xmax = -94.5, # xmax
+                  ymax = 30.5), 
+                  crs = st_crs(houston_feb7_stars))
+
+# Crop the Feb 7 stars object
+cropped_houston_feb7_stars <- st_crop(houston_feb7_stars, extent) 
+
+# Crop Feb 16 stars object
+cropped_houston_feb16_stars <- st_crop(houston_feb16_stars, extent) 
+
+plot(cropped_houston_feb7_stars, 
+     main = "February 7, 2021",
+     key.pos = NULL)
+plot(cropped_houston_feb16_stars, 
+     main = "February 16, 2021",
+     key.pos = NULL)
+
+```
+
+## Identify the number of homes likely impacted by blackouts
+
+Buildings
+
+find the areas that intersect with blackout raster outside 200m of highway
+
+layer needs to be overlapped with areas non-highway that experienced a blackout
+
+Use -\> st_intersection , st_within, st_contains
+
+st_within and st_contains will return different output than st_intersection:
+
+if home borders area of the blackout and is partly in, st_intersects will say that home will be affected.
+
+```{r}
+# Transform CRS of houses to match the difference crs
+
+houses_transform <- st_transform(houses, crs = st_crs(difference))
+# Using if-else statements to verify match
+if(st_crs(houses_transform) == st_crs(difference)){
+print("Match")
+} else {
+print("Not a match")
+}
+```
+
+```{r}
+# Checking that units are the same 
+
+if (st_crs(houses_transform, parameters = TRUE)$units == st_crs(difference, parameters = TRUE)$units) {
+  print("Units match") 
+} else {
+  print("Units do not match")
+}
+
+```
+
+```{r}
+# Make both objects valid prior to doing st_intersection
+
+houses_transform <- houses_transform |> 
+  st_make_valid()
+
+difference <- difference |> 
+  st_make_valid()
+
+houses_blackout <- st_intersects(houses_transform, difference)
+
+# Convert to logical vector
+
+houses_blackout_logical <- lengths(houses_blackout) > 0
+
+# filter based on logical vector
+
+house_blackout = houses_transform[houses_blackout_logical, ]
+```
+
+```{r}
+# Finding number of homes affected by blackout 
+
+house_blackout |> 
+  summarise(n_homes = n()) |> 
+  st_drop_geometry()
+
+```
+
+## Socioecomomic
+
+```{r}
+# Left join between layers with GEO ID to join income layer with geometry layer
+
+acs_sf_df <- acs_geom |> 
+  left_join(acs_income, by = c("GEOID_Data" = "GEOID"))
+```
+
+
+```{r}
+# Transform CRS of acs_sf_df to match the difference crs
+
+acs_sf_df_transform <- st_transform(acs_sf_df, crs = st_crs(difference))
+# Using if-else statements to verify match
+if(st_crs(acs_sf_df_transform) == st_crs(difference)){
+print("Match")
+} else {
+print("Not a match")
+}
+```
+
+```{r, message=FALSE, output = FALSE}
+# Make acs_sf_df_transform valid 
+acs_sf_df_transform |> 
+  st_make_valid()
+```
+
+```{r}
+tracts_within_blackout <- st_intersects(acs_sf_df_transform, difference)
+
+# Convert to logical vector
+tracts_within_blackout_logical <- lengths(tracts_within_blackout) > 0
+
+# filter based on logical vector, only have buildings in blackout
+income_blackout = acs_sf_df_transform[tracts_within_blackout_logical, ]
+
+```
+
+```{r}
+# Boxplot income within blackout 
+
+plot1 <- ggplot(income_blackout) + 
+  geom_boxplot(aes(y = B19013e1)) + 
+  labs(title = "Inside Blackout Zone", 
+       y = "Household Income") + 
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank()) 
+
+```
+
+```{r}
+# Finding census tracts outside of blackout 
+
+tracts_out_blackout <- st_difference(difference, acs_sf_df_transform)
+```
+
+```{r}
+# Boxplot income outside blackout 
+plot2 <- ggplot(tracts_out_blackout)  +
+  geom_boxplot(aes(y = B19013e1)) + 
+  labs(title = "Outside Blackout Zone") + 
+  theme(axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank(), 
+        axis.title.y = element_blank(), 
+        axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank()) 
+```
+
+```{r}
+plot1 + plot2
+```
