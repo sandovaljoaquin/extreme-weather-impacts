@@ -1,9 +1,11 @@
 ---
-title: "Identifying the impacts of extreme weather"
-format: html
+title: "Identifying the Impacts of Extreme Weather"
+format: docx
 editor: visual
 editor_options: 
   chunk_output_type: console
+author: Joaquin Sandoval
+date: 11/10/2025
 ---
 
 Import necessary packages
@@ -255,18 +257,6 @@ plot(cropped_houston_feb16_stars,
 
 ## Identify the number of homes likely impacted by blackouts
 
-Buildings
-
-find the areas that intersect with blackout raster outside 200m of highway
-
-layer needs to be overlapped with areas non-highway that experienced a blackout
-
-Use -\> st_intersection , st_within, st_contains
-
-st_within and st_contains will return different output than st_intersection:
-
-if home borders area of the blackout and is partly in, st_intersects will say that home will be affected.
-
 ```{r}
 # Transform CRS of houses to match the difference crs
 
@@ -319,7 +309,7 @@ house_blackout |>
 
 ```
 
-## Socioecomomic
+## Socioecomomic: distributions of median household income for census tracts that did and did not experience blackouts.
 
 ```{r}
 # Left join between layers with GEO ID to join income layer with geometry layer
@@ -370,13 +360,13 @@ plot1 <- ggplot(income_blackout) +
 
 ```
 
-```{r}
+```{r, warning = FALSE}
 # Finding census tracts outside of blackout 
 
 tracts_out_blackout <- st_difference(difference, acs_sf_df_transform)
 ```
 
-```{r}
+```{r, warning=FALSE}
 # Boxplot income outside blackout 
 plot2 <- ggplot(tracts_out_blackout)  +
   geom_boxplot(aes(y = B19013e1)) + 
@@ -388,6 +378,25 @@ plot2 <- ggplot(tracts_out_blackout)  +
         axis.text.x = element_blank()) 
 ```
 
-```{r}
+```{r, warning=FALSE}
 plot1 + plot2
 ```
+
+##  Map of the census tracts in Houston that lost power
+
+```{r}
+# Plot the tracts that overlapped with blackout mask `income_blackout`
+
+tm_shape(income_blackout) + 
+  tm_polygons(fill = "lightgreen") +
+tm_title("Houston Census Tracts Affected by Blackout", 
+          fontface = "bold") + 
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_compass(position = c("left", "bottom")) + 
+  tm_basemap("OpenStreetMap")
+```
+
+## Interpretation 
+
+The above analysis revealed the extent to which the Houston area experienced power outages after three severe winter storms in February of 2021. This analysis 
+was based on data from Visible Infrared Imaging Radiometer Suite (VIIRS) onboard the Suomi satellite. Areas that experienced a loss of more than than 200 nW cm-2sr-1 (radiant intensity) were assigned to a blackout mask. This mask excluded areas 200 meters from highways. An estimated 133,788 buildings were in this area that lost power. Further analysis was conducted to determine differences in median household income between areas within this blackout area and those not. As the boxplot shows, the median income between both groups is approximately showing that this is power outage caused by extreme weather events did not discriminate based on wealth. 
