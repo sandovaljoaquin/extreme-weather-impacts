@@ -24,8 +24,8 @@ Author: Joaquin Sandoval
 
 References/Acknowledgements: 
 
-EJScreen data on environmental and demographic information for US at Census tract and block group levels was retrieved from The Environmental Protection Agency. 
+Remotely-sensed night lights data, was acquired from the Visible Infrared Imaging Radiometer Suite (VIIRS) onboard the Suomi satellite.
 
-HOLC grade designation spatial data: https://dsl.richmond.edu/panorama/redlining/data was retrieved from The Digital Scholarshop Lab at the University of Richmond.  
+Geofabrik OpenStreetMap Data Extracts for shapefile of all highways and homes in Texas. 
 
-Biodiversity observation data was retrieved from The Global Biodiversity Information Facility.  
+ U.S. Census Bureau’s American Community Survey for census tracts in 2019 ArcGIS file geodatabase.
