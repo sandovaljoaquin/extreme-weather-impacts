@@ -5,7 +5,7 @@ editor: visual
 editor_options: 
   chunk_output_type: console
 author: Joaquin Sandoval
-date: 11/10/2025
+date: 12/1/2025
 ---
 
 Import necessary packages
@@ -19,6 +19,7 @@ library(stars)
 library(tmap)
 library(kableExtra)
 library(patchwork)
+library(ggspatial)
 ```
 
 ## Data Import
@@ -65,8 +66,6 @@ WHERE (type IS NULL AND name IS NULL)")
 acs_geom <- st_read(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS")
 
 acs_income <- st_read(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "X19_INCOME")
-
-houston_lines <- st_read(here::here("data", "COH_City_Limit_view_1951759729060774326", "Houston_City_Limit.shp"))
 
 ```
 
@@ -210,21 +209,24 @@ difference <- st_difference(cropped_blackout, highway_200m_buffer)
 
 ```
 
-```{r}
+```{r, message=FALSE}
 
 tm_shape(difference) + 
   tm_polygons(fill = "black") + 
   tm_title("Houston Areas Affected by Blackout", 
           fontface = "bold") + 
-  tm_scalebar(position = c("left", "bottom")) + 
   tm_compass(position = c("left", "bottom")) + 
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_add_legend(type = "fill", 
+                col = "black", 
+                title = "Areas Affected") + 
   tm_basemap("OpenStreetMap")
 
 ```
 
 ## Set of maps comparing night light intensities before and after the first two storms
 
-```{r}
+```{r, warning = FALSE}
 # Creating stars raster object of each day 
 
 # Merge tils for February 7  
@@ -246,12 +248,49 @@ cropped_houston_feb7_stars <- st_crop(houston_feb7_stars, extent)
 # Crop Feb 16 stars object
 cropped_houston_feb16_stars <- st_crop(houston_feb16_stars, extent) 
 
-plot(cropped_houston_feb7_stars, 
-     main = "February 7, 2021",
-     key.pos = NULL)
-plot(cropped_houston_feb16_stars, 
-     main = "February 16, 2021",
-     key.pos = NULL)
+# plot(cropped_houston_feb7_stars, 
+#      main = "February 7, 2021",
+#      key.pos = NULL)
+# plot(cropped_houston_feb16_stars, 
+#      main = "February 16, 2021",
+#      key.pos = NULL)
+
+
+# Plot 1: Before Storm
+before <- ggplot() +
+  geom_stars(data = cropped_houston_feb7_stars) +
+   scale_fill_viridis_c(name = "Radiance", na.value = "transparent") + 
+  annotation_north_arrow(location = "tr",
+                         which_north = "true",
+                         style = north_arrow_fancy_orienteering) +  # North arrow
+ labs(title = "Before Storm", 
+    x = "Longitude", 
+       y = "Latitude") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# Plot 2: After Storm
+
+after <- ggplot() +
+  geom_stars(data = cropped_houston_feb16_stars ) +
+  scale_fill_viridis_c(name = "Radiance", na.value = "transparent") +
+  annotation_north_arrow(location = "tr",
+                         which_north = "true",
+                         style = north_arrow_fancy_orienteering) +  # North arrow
+  labs(title = "After Storm", 
+    x = "Longitude", 
+       y = "Latitude") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# Combine plots side by side
+storm_comparision <- (before + after) 
+
+storm_comparision + 
+  plot_annotation(title = "Comparing Houston Night Light Intensities") & 
+  theme(plot.title = element_text(hjust = 0.5))
+  
+
 
 ```
 
@@ -318,7 +357,6 @@ acs_sf_df <- acs_geom |>
   left_join(acs_income, by = c("GEOID_Data" = "GEOID"))
 ```
 
-
 ```{r}
 # Transform CRS of acs_sf_df to match the difference crs
 
@@ -353,11 +391,10 @@ income_blackout = acs_sf_df_transform[tracts_within_blackout_logical, ]
 
 plot1 <- ggplot(income_blackout) + 
   geom_boxplot(aes(y = B19013e1)) + 
-  labs(title = "Inside Blackout Zone", 
-       y = "Household Income") + 
+  labs(x = "Inside Blackout Zone", 
+       y = "Household Income (USD)") + 
   theme(axis.ticks.x = element_blank(), 
         axis.text.x = element_blank()) 
-
 ```
 
 ```{r, warning = FALSE}
@@ -370,7 +407,7 @@ tracts_out_blackout <- st_difference(difference, acs_sf_df_transform)
 # Boxplot income outside blackout 
 plot2 <- ggplot(tracts_out_blackout)  +
   geom_boxplot(aes(y = B19013e1)) + 
-  labs(title = "Outside Blackout Zone") + 
+  labs(x = "Outside Blackout Zone") + 
   theme(axis.text.y = element_blank(), 
         axis.ticks.y = element_blank(), 
         axis.title.y = element_blank(), 
@@ -379,12 +416,15 @@ plot2 <- ggplot(tracts_out_blackout)  +
 ```
 
 ```{r, warning=FALSE}
-plot1 + plot2
+
+patchwork <- (plot1 + plot2) 
+  patchwork + plot_annotation(title = "Distributions of median household income for Houston census tracts") & 
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
-##  Map of the census tracts in Houston that lost power
+## Map of the census tracts in Houston that lost power
 
-```{r}
+```{r, warning = FALSE}
 # Plot the tracts that overlapped with blackout mask `income_blackout`
 
 tm_shape(income_blackout) + 
@@ -393,10 +433,13 @@ tm_title("Houston Census Tracts Affected by Blackout",
           fontface = "bold") + 
   tm_scalebar(position = c("left", "bottom")) + 
   tm_compass(position = c("left", "bottom")) + 
-  tm_basemap("OpenStreetMap")
+  tm_add_legend(type = "fill", 
+                col = "lightgreen", 
+                title = "Cenus Tracts Affected") + 
+  tm_basemap("OpenStreetMap") 
+  
 ```
 
-## Interpretation 
+## Interpretation
 
-The above analysis revealed the extent to which the Houston area experienced power outages after three severe winter storms in February of 2021. This analysis 
-was based on data from Visible Infrared Imaging Radiometer Suite (VIIRS) onboard the Suomi satellite. Areas that experienced a loss of more than than 200 nW cm-2sr-1 (radiant intensity) were assigned to a blackout mask. This mask excluded areas 200 meters from highways. An estimated 133,788 buildings were in this area that lost power. Further analysis was conducted to determine differences in median household income between areas within this blackout area and those not. As the boxplot shows, the median income between both groups is approximately showing that this is power outage caused by extreme weather events did not discriminate based on wealth. 
+The above analysis revealed the extent to which the Houston area experienced power outages after three severe winter storms in February of 2021. This analysis was based on data from Visible Infrared Imaging Radiometer Suite (VIIRS) onboard the Suomi satellite. Areas that experienced a loss of more than than 200 nW cm-2sr-1 (radiant intensity) were assigned to a blackout mask. This mask excluded areas 200 meters from highways. An estimated 133,788 buildings were in this area that lost power. Further analysis was conducted to determine differences in median household income between areas within this blackout area and those not. As the boxplot shows, the median income between both groups is approximately the same showing that this is power outage caused by extreme weather events did not discriminate based on wealth.
