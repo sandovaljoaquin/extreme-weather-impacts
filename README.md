@@ -1,5 +1,3 @@
-# extreme-weather-impacts
-
 # Exploring Extreme Weather Impacts: Houston Area Power Loss
 
 The purpose of this repository is to analyze the visualize the extent which the Houston area experienced power outages after three severe winter storms in February of 2021. Income at the census tract level was also compared between areas that lost power and areas that did not.   
@@ -28,4 +26,4 @@ Remotely-sensed night lights data, was acquired from the Visible Infrared Imagin
 
 Geofabrik OpenStreetMap Data Extracts for shapefile of all highways and homes in Texas. 
 
- U.S. Census Bureau’s American Community Survey for census tracts in 2019 ArcGIS file geodatabase.
+U.S. Census Bureau’s American Community Survey for census tracts in 2019 ArcGIS file geodatabase.
